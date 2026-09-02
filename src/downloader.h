@@ -3,6 +3,8 @@
 
 #include <stddef.h>
 
+#include "thrd.h"
+
 /* Aggregate result counters for a batch download. */
 typedef struct {
     int downloaded;
@@ -28,12 +30,13 @@ typedef struct {
  *                    skipped as restricted.
  * @param filtered    Parallel array; if non-NULL, entries with value != 0 are
  *                    skipped as filtered out (e.g. by a file-type/glob flag).
+ * @param threads     Number of parallel download workers (>= 1).
  * @param stats       Out-param collecting per-category totals.
  * @return 0 on success (no failures), non-zero otherwise.
  */
 int download_all(const char *identifier, const char *dest,
                  const char *const *names, const double *sizes,
                  const int *restricted, const int *filtered, size_t count,
-                 DownloadStats *stats);
+                 int threads, DownloadStats *stats);
 
 #endif /* DOWNLOADER_H */

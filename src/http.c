@@ -281,7 +281,10 @@ int http_get(const char *url_w, Buffer *out, const char *range_hdr,
 /* ==================== libcurl implementation (POSIX) ==================== */
 #include <curl/curl.h>
 
-static int g_curl_status = 0;
+/* g_curl_status is written by the header callback and read by the file write
+   callback during a transfer; it must be per-thread so concurrent downloads
+   (--threads) do not race on it. */
+static _Thread_local int g_curl_status = 0;
 static char g_cookie_header[8300] = {0};
 
 void http_set_cookie_header(const char *cookie_header) {

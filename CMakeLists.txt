@@ -20,6 +20,7 @@ set(SOURCES
     src/auth.c
     src/archive.c
     src/downloader.c
+    src/thrd.c
     src/parson.c
 )
 
@@ -33,8 +34,9 @@ if(WIN32)
 else()
     # POSIX backend uses libcurl
     find_package(CURL REQUIRED)
+    find_package(Threads REQUIRED)
     target_include_directories(archive_downloader PRIVATE ${CURL_INCLUDE_DIRS})
-    target_link_libraries(archive_downloader PRIVATE ${CURL_LIBRARIES})
+    target_link_libraries(archive_downloader PRIVATE ${CURL_LIBRARIES} Threads::Threads)
 endif()
 
 if(MSVC)

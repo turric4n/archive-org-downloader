@@ -59,10 +59,40 @@ static void build_download_url(const char *identifier, const char *name,
              identifier, enc);
 }
 
+/* Shared state handed to every worker thread. `next` is consumed under the
+   mutex so each file is handled by exactly one worker. */
+typedef struct {
+    const char *identifier;
+    const char *dest;
+    const char *const *names;
+    const double *sizes;
+    const int *restricted;
+    const int *filtered;
+    size_t count;
+    size_t next;
+    DownloadStats *stats;
+    thrd_mutex mutex;
+} DownloadShared;
+
+static void download_one(void *arg);
+
+static void count_one(DownloadShared *sh, int kind) {
+    thrd_mutex_lock(&sh->mutex);
+    DownloadStats *s = sh->stats;
+    switch (kind) {
+        case 1:  s->downloaded++; break;
+        case 2:  s->skipped++;    break;
+        case 3:  s->failed++;     break;
+        case 4:  s->restricted++; break;
+        case 5:  s->filtered++;   break;
+    }
+    thrd_mutex_unlock(&sh->mutex);
+}
+
 int download_all(const char *identifier, const char *dest,
                  const char *const *names, const double *sizes,
                  const int *restricted, const int *filtered, size_t count,
-                 DownloadStats *stats) {
+                 int threads, DownloadStats *stats) {
     stats->downloaded = 0;
     stats->skipped = 0;
     stats->failed = 0;
@@ -72,36 +102,84 @@ int download_all(const char *identifier, const char *dest,
     LOG_T("Creating destination directory '%s'.", dest);
     make_dir(dest);
 
-    for (size_t i = 0; i < count; i++) {
-        const char *name = names[i];
-        LOG_T("Processing file index %zu of %zu.", i + 1, count);
+    int n = threads > 0 ? threads : 1;
+    if ((size_t)n > count) n = (int)count;
+    if (n < 1) n = 1;
+
+    DownloadShared sh = {0};
+    sh.identifier = identifier;
+    sh.dest = dest;
+    sh.names = names;
+    sh.sizes = sizes;
+    sh.restricted = restricted;
+    sh.filtered = filtered;
+    sh.count = count;
+    sh.next = 0;
+    sh.stats = stats;
+    thrd_mutex_init(&sh.mutex);
+
+    thrd_t *workers = (thrd_t *)calloc((size_t)n, sizeof(thrd_t));
+    if (!workers) {
+        thrd_mutex_destroy(&sh.mutex);
+        return 1;
+    }
+
+    int spawned = 0;
+    for (int i = 0; i < n; i++) {
+        if (thrd_create(&workers[i], download_one, &sh) == 0) spawned++;
+    }
+
+    for (int i = 0; i < spawned; i++) thrd_join(workers[i]);
+    free(workers);
+    thrd_mutex_destroy(&sh.mutex);
+
+    return stats->failed > 0 ? 1 : 0;
+}
+
+static size_t next_index(DownloadShared *sh) {
+    thrd_mutex_lock(&sh->mutex);
+    size_t i = sh->next++;
+    int ok = i < sh->count;
+    thrd_mutex_unlock(&sh->mutex);
+    return ok ? i : (size_t)-1;
+}
+
+static void download_one(void *arg) {
+    DownloadShared *sh = (DownloadShared *)arg;
+
+    for (;;) {
+        size_t i = next_index(sh);
+        if (i == (size_t)-1) break;
+
+        const char *name = sh->names[i];
+        LOG_T("Processing file index %zu of %zu.", i + 1, sh->count);
         if (!name || !name[0]) {
             LOG_W("File %zu has empty name - skipped.", i + 1);
             continue;
         }
 
-        if (filtered && filtered[i]) {
+        if (sh->filtered && sh->filtered[i]) {
             LOG_D("File '%s': filtered out by --type pattern - skipping.", name);
             printf("  %s[SKIP]%s %s (filtered)\n",
                    color_start("yellow"), color_reset(), name);
-            stats->filtered++;
+            count_one(sh, 5);
             continue;
         }
 
-        if (restricted && restricted[i]) {
+        if (sh->restricted && sh->restricted[i]) {
             LOG_D("File '%s': marked as restricted - skipping.", name);
             printf("  %s[SKIP]%s %s (restricted)\n",
                    color_start("yellow"), color_reset(), name);
-            stats->restricted++;
+            count_one(sh, 4);
             continue;
         }
 
-        double sz = sizes ? sizes[i] : 0;
+        double sz = sh->sizes ? sh->sizes[i] : 0;
         long fsz = (long)sz;
 
         char url[4096], path[4096];
-        build_download_url(identifier, name, url, sizeof(url));
-        build_local_path(dest, name, path, sizeof(path));
+        build_download_url(sh->identifier, name, url, sizeof(url));
+        build_local_path(sh->dest, name, path, sizeof(path));
         LOG_D("Download URL : %s", url);
         LOG_D("Local path   : %s  (expected size %ld)", path, fsz);
 
@@ -113,7 +191,7 @@ int download_all(const char *identifier, const char *dest,
             LOG_I("File '%s' already downloaded (%ld bytes). Skipping.", name, exist);
             printf("  %s[DONE]%s %s (already downloaded)\n",
                    color_start("green"), color_reset(), name);
-            stats->skipped++;
+            count_one(sh, 2);
             continue;
         }
 
@@ -152,7 +230,7 @@ int download_all(const char *identifier, const char *dest,
             LOG_E("Cannot open file for writing: %s", path);
             fprintf(stderr, "  %s[ERR]%s Cannot write: %s\n",
                     color_start("red"), color_reset(), path);
-            stats->failed++;
+            count_one(sh, 3);
             continue;
         }
 
@@ -163,7 +241,7 @@ int download_all(const char *identifier, const char *dest,
         dc.total_size = fsz;
         dc.start_time = time(NULL);
         dc.index = (int)(i + 1);
-        dc.total_files = (int)count;
+        dc.total_files = (int)sh->count;
 
         char range_h[64] = {0};
         if (resume > 0) {
@@ -186,25 +264,23 @@ int download_all(const char *identifier, const char *dest,
                 LOG_I("Successfully downloaded '%s' (%ld bytes).", name, final);
                 printf("\n  %s[OK]%s   %s\n",
                        color_start("green"), color_reset(), name);
-                stats->downloaded++;
+                count_one(sh, 1);
             } else {
                 LOG_W("File '%s' incomplete: %ld/%ld bytes.", name, final, fsz);
                 printf("\n  %s[WARN]%s %s (incomplete: %ld/%ld)\n",
                        color_start("yellow"), color_reset(), name, final, fsz);
-                stats->failed++;
+                count_one(sh, 3);
             }
         } else if (sc == 416) {
             LOG_I("Server: Range not satisfiable - file '%s' complete.", name);
             printf("\n  %s[DONE]%s %s (server says Range not satisfiable)\n",
                    color_start("green"), color_reset(), name);
-            stats->skipped++;
+            count_one(sh, 2);
         } else {
             LOG_E("HTTP error %d for file '%s'.", sc, name);
             fprintf(stderr, "\n  %s[ERR]%s  %s (HTTP %d)\n",
                     color_start("red"), color_reset(), name, sc);
-            stats->failed++;
+            count_one(sh, 3);
         }
     }
-
-    return stats->failed > 0 ? 1 : 0;
 }

@@ -126,6 +126,7 @@ creates and uses `./total-dos-collection-b`.
 | `--email <addr>`  | Supply the login email non-interactively |
 | `--password <pass>` | Supply the login password non-interactively |
 | `--type <glob>`   | Only download files matching a type/glob pattern |
+| `--threads <n>`   | Download at most `n` files concurrently (default 1) |
 
 ### Terminal colours
 

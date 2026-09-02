@@ -35,6 +35,7 @@ static void usage(const char *prog) {
     printf("  --password <pass>      Supply login password non-interactively\n");
     printf("  --type <glob>          Only download files matching a type/glob\n");
     printf("                         (e.g. \"*.zip\", \"*.{jpg,png}\", \"*/doc/*\")\n");
+    printf("  --threads <n>          Download at most n files concurrently (default 1)\n");
     printf("  --color / --no-color   Force enable / disable ANSI colours\n");
     printf("\nEnvironment:\n");
     printf("  IA_EMAIL / IA_PASSWORD Can provide credentials for --login without\n");
@@ -159,6 +160,7 @@ int main(int argc, char *argv[]) {
     const char *cfg_path_arg = NULL;
     const char *arg_email = NULL, *arg_pass = NULL;
     const char *type_pattern = NULL; /* optional --type glob; NULL = all files */
+    int threads = 1;
     int have_src = 0, have_dest = 0;
     int want_login = 0, want_logout = 0;
     int need_val = 0; /* next token is a flag's value */
@@ -170,6 +172,10 @@ int main(int argc, char *argv[]) {
             else if (strcmp(val_flag, "password") == 0) arg_pass = tok;
             else if (strcmp(val_flag, "config") == 0) cfg_path_arg = tok;
             else if (strcmp(val_flag, "type") == 0) type_pattern = tok;
+            else if (strcmp(val_flag, "threads") == 0) {
+                threads = atoi(tok);
+                if (threads < 1) threads = 1;
+            }
             need_val = 0;
             val_flag = NULL;
             continue;
@@ -193,6 +199,8 @@ int main(int argc, char *argv[]) {
             need_val = 1; val_flag = "config";
         } else if (strcmp(tok, "--type") == 0) {
             need_val = 1; val_flag = "type";
+        } else if (strcmp(tok, "--threads") == 0) {
+            need_val = 1; val_flag = "threads";
         } else if (strcmp(tok, "--color") == 0) {
             color_enable();
         } else if (strcmp(tok, "--no-color") == 0) {
@@ -268,6 +276,7 @@ int main(int argc, char *argv[]) {
     LOG_I("  source_url           = %s", source_url);
     LOG_I("  destination_folder   = %s", dest);
     LOG_I("  credentials file     = %s", cfg_path_arg);
+    LOG_I("  download threads     = %d", threads);
 
     /* Handle --login alongside a download: authenticate and store credentials. */
     if (want_login) {
@@ -328,7 +337,7 @@ int main(int argc, char *argv[]) {
 
     DownloadStats stats;
     int rc = download_all(id, dest, names, sizes, restricted, filtered,
-                          listing.count, &stats);
+                          listing.count, threads, &stats);
 
     LOG_I("==================================================");
     LOG_I("  Download summary");

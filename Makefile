@@ -8,7 +8,7 @@
 CC       ?= cc
 CFLAGS   ?= -O2 -Wall -Wextra -std=c11
 CPPFLAGS += -Isrc
-LDLIBS   += -lcurl
+LDLIBS   += -lcurl -pthread
 LDFLAGS  ?=
 
 # Build version, embedded via -DVERSION. Override with:
@@ -29,6 +29,7 @@ SOURCES = $(SRC_DIR)/main.c \
           $(SRC_DIR)/auth.c \
           $(SRC_DIR)/archive.c \
           $(SRC_DIR)/downloader.c \
+          $(SRC_DIR)/thrd.c \
           $(SRC_DIR)/parson.c
 
 OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))
