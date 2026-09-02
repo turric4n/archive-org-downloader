@@ -299,6 +299,14 @@ void http_set_cookie_header(const char *cookie_header) {
 
 struct CURLMemory { char *data; size_t size; };
 
+/* Bundles the caller's write callback (e.g. progress_display, which prints
+   per-chunk speed/ETA) with its opaque user pointer so the libcurl file
+   write callback can delegate to it, matching the WinHTTP backend behaviour. */
+typedef struct {
+    HttpWriteCallback cb;
+    void *user;
+} CurlWriteShim;
+
 static size_t curl_header_cb(char *buffer, size_t size, size_t nitems, void *user) {
     size_t b = size * nitems;
     (void)user;
@@ -322,7 +330,8 @@ static size_t curl_write_cb(void *ptr, size_t sz, size_t n, void *ud) {
 }
 
 static size_t curl_file_cb(void *ptr, size_t sz, size_t n, void *ud) {
-    DownloadContext *ctx = (DownloadContext *)ud;
+    CurlWriteShim *s = (CurlWriteShim *)ud;
+    DownloadContext *ctx = (DownloadContext *)s->user;
     /* Server ignored our Range and sent full 200 body: overwrite from byte 0 */
     if (ctx->resume_from > 0 && g_curl_status == 200) {
         LOG_W("Server ignored Range request (returned 200). Reopening '%s' in overwrite mode.",
@@ -332,8 +341,7 @@ static size_t curl_file_cb(void *ptr, size_t sz, size_t n, void *ud) {
         ctx->downloaded = 0;
     }
     size_t b = sz * n;
-    fwrite(ptr, 1, b, ctx->fp);
-    ctx->downloaded += (long)b;
+    if (s->cb) s->cb(ptr, b, s->user);
     return b;
 }
 
@@ -399,6 +407,7 @@ int http_get(const char *url, Buffer *out, const char *range,
         return -1;
     }
     struct CURLMemory mem = {0};
+    CurlWriteShim shim = { write_cb, user };
     g_curl_status = 0;
     LOG_D("Setting libcurl options for URL: %s", url);
     if (range) LOG_D("Requesting byte range: %s", range);
@@ -420,7 +429,7 @@ int http_get(const char *url, Buffer *out, const char *range,
     }
     if (write_cb) {
         curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, curl_file_cb);
-        curl_easy_setopt(c, CURLOPT_WRITEDATA, user);
+        curl_easy_setopt(c, CURLOPT_WRITEDATA, &shim);
     } else {
         curl_easy_setopt(c, CURLOPT_WRITEFUNCTION, curl_write_cb);
         curl_easy_setopt(c, CURLOPT_WRITEDATA, &mem);
