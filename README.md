@@ -233,10 +233,13 @@ archive is always `archive_downloader` (Linux) or `archive_downloader.exe`
 | Windows  | `archive_downloader-<version>-windows-x86_64.zip` | `archive_downloader.exe` |
 | Both     | `checksums.txt` | SHA256 of every asset |
 
-The `<version>` is the git tag for version releases (`v1.0.0`) and
-`master-<sha>` for branch builds. The version string is compiled into every
-binary and reported by `archive_downloader --version`, so you can always
-identify exactly which build you are running.
+The `<version>` is a readable, auto-incrementing semantic version. Every
+branch build bumps the patch number from the previous version tag (e.g.
+`v1.0.0`, then `v1.0.1`, `v1.0.2`, ...), starting at `v1.0.0`. Pushing a
+`v1.2.3` tag or any `v*` tag publishes a release at exactly that version. The
+version string is compiled into every binary and reported by
+`archive_downloader --version`, so you can always identify exactly which build
+you are running.
 
 Builds default `VERSION` to `dev` for local compiles. To embed a version
 locally: `cmake -DVERSION="v1.0.0"`, `make VERSION="v1.0.0"`, or
