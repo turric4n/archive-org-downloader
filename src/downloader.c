@@ -1,0 +1,202 @@
+#define _CRT_SECURE_NO_WARNINGS
+#include "downloader.h"
+#include "http.h"
+#include "log.h"
+#include "util.h"
+#include "color.h"
+
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <time.h>
+
+static void progress_display(const void *data, size_t len, void *user) {
+    DownloadContext *dc = (DownloadContext *)user;
+    LOG_T("file_writer: received %zu bytes for file #%d of %d.",
+          len, dc->index, dc->total_files);
+    fwrite(data, 1, len, dc->fp);
+    dc->downloaded += (long)len;
+
+    double elapsed = difftime(time(NULL), dc->start_time);
+    if (elapsed < 0.1) elapsed = 0.1;
+    double total = dc->total_size;
+    double cur = dc->resume_from + dc->downloaded;
+    double pct = total > 0 ? cur / total * 100.0 : 0;
+    double speed = dc->downloaded / elapsed;
+    double eta = total > 0 ? (total - cur) / speed : 0;
+    int h = eta > 0 ? (int)(eta / 3600) : 0;
+    int m = eta > 0 ? (int)((eta - h * 3600) / 60) : 0;
+    int s = eta > 0 ? (int)(eta - h * 3600 - m * 60) : 0;
+
+    printf("\r  [%d/%d] %ld / %ld bytes (%.1f%%) - %.1f KB/s - ETA %02d:%02d:%02d  ",
+           dc->index, dc->total_files,
+           dc->resume_from + dc->downloaded, dc->total_size,
+           pct, speed / 1024.0, h, m, s);
+    fflush(stdout);
+}
+
+/* Returns the local path for a file name, joined under `dest`. */
+static void build_local_path(const char *dest, const char *name,
+                             char *out, size_t out_sz) {
+    snprintf(out, out_sz, "%s%c%s", dest, PATHSEP, name);
+#ifdef _WIN32
+    for (char *q = out; *q; q++) if (*q == '/') *q = '\\';
+#endif
+}
+
+/* Returns the URL of a file within the archive. */
+static void build_download_url(const char *identifier, const char *name,
+                               char *out, size_t out_sz) {
+    snprintf(out, out_sz, "https://archive.org/download/%s/%s",
+             identifier, name);
+}
+
+int download_all(const char *identifier, const char *dest,
+                 const char *const *names, const double *sizes,
+                 const int *restricted, const int *filtered, size_t count,
+                 DownloadStats *stats) {
+    stats->downloaded = 0;
+    stats->skipped = 0;
+    stats->failed = 0;
+    stats->restricted = 0;
+    stats->filtered = 0;
+
+    LOG_T("Creating destination directory '%s'.", dest);
+    make_dir(dest);
+
+    for (size_t i = 0; i < count; i++) {
+        const char *name = names[i];
+        LOG_T("Processing file index %zu of %zu.", i + 1, count);
+        if (!name || !name[0]) {
+            LOG_W("File %zu has empty name - skipped.", i + 1);
+            continue;
+        }
+
+        if (filtered && filtered[i]) {
+            LOG_D("File '%s': filtered out by --type pattern - skipping.", name);
+            printf("  %s[SKIP]%s %s (filtered)\n",
+                   color_start("yellow"), color_reset(), name);
+            stats->filtered++;
+            continue;
+        }
+
+        if (restricted && restricted[i]) {
+            LOG_D("File '%s': marked as restricted - skipping.", name);
+            printf("  %s[SKIP]%s %s (restricted)\n",
+                   color_start("yellow"), color_reset(), name);
+            stats->restricted++;
+            continue;
+        }
+
+        double sz = sizes ? sizes[i] : 0;
+        long fsz = (long)sz;
+
+        char url[2048], path[4096];
+        build_download_url(identifier, name, url, sizeof(url));
+        build_local_path(dest, name, path, sizeof(path));
+        LOG_D("Download URL : %s", url);
+        LOG_D("Local path   : %s  (expected size %ld)", path, fsz);
+
+        long exist = file_size_on_disk(path);
+        if (exist >= 0) LOG_D("File exists on disk with size %ld bytes.", exist);
+        else            LOG_D("File does not exist on disk.");
+
+        if (exist >= fsz && fsz > 0) {
+            LOG_I("File '%s' already downloaded (%ld bytes). Skipping.", name, exist);
+            printf("  %s[DONE]%s %s (already downloaded)\n",
+                   color_start("green"), color_reset(), name);
+            stats->skipped++;
+            continue;
+        }
+
+        char szbuf[64]; fmt_size(szbuf, sizeof(szbuf), fsz);
+        LOG_I("Starting download of '%s' (%s, %ld bytes).", name, szbuf, fsz);
+        printf("  %s[GET]%s  %s (%s)\n",
+               color_start("cyan"), color_reset(), name, szbuf);
+
+        /* Create parent dirs if the name has sub-paths */
+        char *last = strrchr(path, '/');
+        char *lastbs = strrchr(path, '\\');
+        if (!last || (lastbs && lastbs > last)) last = lastbs;
+        if (last) {
+            *last = 0;
+            LOG_T("Creating directory structure for: %s", path);
+            mkdirs(path);
+            *last = PATHSEP;
+        }
+
+        FILE *fp = NULL;
+        long resume = 0;
+        if (exist > 0 && exist < fsz) {
+            LOG_I("Partial file: %ld / %ld bytes (%.1f%%). Resuming.",
+                  exist, fsz, (double)exist / fsz * 100);
+            printf("         Resuming from %ld bytes (%.1f%%)\n",
+                   exist, (double)exist / fsz * 100);
+            fp = fopen(path, "ab");
+            resume = exist;
+            if (fp) LOG_D("Opened '%s' in append mode.", path);
+        } else {
+            LOG_T("Opening '%s' for fresh download.", path);
+            fp = fopen(path, "wb");
+            if (fp) LOG_D("Opened '%s' for writing.", path);
+        }
+        if (!fp) {
+            LOG_E("Cannot open file for writing: %s", path);
+            fprintf(stderr, "  %s[ERR]%s Cannot write: %s\n",
+                    color_start("red"), color_reset(), path);
+            stats->failed++;
+            continue;
+        }
+
+        DownloadContext dc = {0};
+        dc.fp = fp;
+        dc.file_name = path;
+        dc.resume_from = resume;
+        dc.total_size = fsz;
+        dc.start_time = time(NULL);
+        dc.index = (int)(i + 1);
+        dc.total_files = (int)count;
+
+        char range_h[64] = {0};
+        if (resume > 0) {
+            snprintf(range_h, sizeof(range_h), "bytes=%ld-", resume);
+            LOG_D("Range header set: '%s'", range_h);
+        } else {
+            LOG_T("No resume - no Range header needed.");
+        }
+
+        LOG_T("Initiating HTTP download of file '%s'.", name);
+        int sc = http_get(url, NULL, range_h[0] ? range_h : NULL,
+                          progress_display, &dc);
+        fclose(fp);
+        LOG_D("File '%s': transfer complete, status %d.", name, sc);
+
+        if (sc == 200 || sc == 206) {
+            long final = file_size_on_disk(path);
+            LOG_D("File '%s': final size on disk = %ld.", name, final);
+            if (final >= fsz || fsz <= 0) {
+                LOG_I("Successfully downloaded '%s' (%ld bytes).", name, final);
+                printf("\n  %s[OK]%s   %s\n",
+                       color_start("green"), color_reset(), name);
+                stats->downloaded++;
+            } else {
+                LOG_W("File '%s' incomplete: %ld/%ld bytes.", name, final, fsz);
+                printf("\n  %s[WARN]%s %s (incomplete: %ld/%ld)\n",
+                       color_start("yellow"), color_reset(), name, final, fsz);
+                stats->failed++;
+            }
+        } else if (sc == 416) {
+            LOG_I("Server: Range not satisfiable - file '%s' complete.", name);
+            printf("\n  %s[DONE]%s %s (server says Range not satisfiable)\n",
+                   color_start("green"), color_reset(), name);
+            stats->skipped++;
+        } else {
+            LOG_E("HTTP error %d for file '%s'.", sc, name);
+            fprintf(stderr, "\n  %s[ERR]%s  %s (HTTP %d)\n",
+                    color_start("red"), color_reset(), name, sc);
+            stats->failed++;
+        }
+    }
+
+    return stats->failed > 0 ? 1 : 0;
+}

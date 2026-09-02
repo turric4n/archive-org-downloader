@@ -1,0 +1,210 @@
+# Archive.org Downloader (C)
+
+A C console application for downloading complete collections from archive.org with automatic resume support.
+
+## Features
+
+- **Auto-resume** - Interrupted downloads automatically resume from where they left off
+- **Skip completed files** - Already-downloaded files are detected and skipped
+- **Restricted file filtering** - Files marked as private/restricted are skipped
+- **Nested directory support** - Files in subdirectories are recreated locally
+- **Progress display** - Shows per-file progress with speed and ETA
+- **Cross-platform** - Uses WinHTTP on Windows, libcurl on Linux/macOS
+
+## Build
+
+### Windows (native, no external deps)
+
+Option A - CMake (recommended):
+
+```bash
+cmake -B build -G "MinGW Makefiles"
+cmake --build build
+```
+
+Option B - Makefile.win (MinGW):
+
+```bash
+mingw32-make -f Makefile.win CC=gcc
+```
+
+### Linux/macOS
+
+Requires libcurl dev package:
+
+```bash
+sudo apt install libcurl4-openssl-dev   # Debian/Ubuntu
+```
+
+Option A - CMake:
+
+```bash
+cmake -B build
+cmake --build build
+```
+
+Option B - Makefile:
+
+```bash
+make
+```
+
+The POSIX `Makefile` and Windows `Makefile.win` use separate object directories
+(`obj/` and `build-win/` respectively), so they don't collide with the CMake
+`build/` output.
+
+## Project Layout
+
+```
+src/
+  main.c        CLI entrypoint: argument parsing, orchestration
+  log.h/.c      Timestamped, leveled logging (ERROR..TRACE)
+  util.h/.c     Buffers, path/mkdir helpers, size formatting, identifier extraction
+  color.h/.c    ANSI terminal colour detection + escape helpers
+  http.h/.c     HTTP abstraction: WinHTTP (Windows) + libcurl (POSIX) backends
+  auth.h/.c     Archive.org login (xauthn), credential persistence, session validation
+  archive.h/.c  archive.org metadata JSON fetch/parse
+  downloader.h/.c  Per-file download loop, resume detection, progress UI
+  parson.h/.c   Vendored JSON parser
+CMakeLists.txt
+Makefile          GNU Makefile (Linux/macOS, libcurl)
+Makefile.win      GNU Makefile (Windows/MinGW, WinHTTP)
+```
+
+## Usage
+
+```
+archive_downloader [-v | -vv] [--login] [--logout] [--config <path>] <source_url> <destination_folder>
+```
+
+### Options
+
+| Flag | Description |
+|------|-------------|
+| `-v`, `--verbose` | Enable detailed logging (INFO + DEBUG + ERROR) |
+| `-vv`, `--trace`  | Enable maximum trace logging (adds TRACE level) |
+| `--color`         | Force-enable ANSI colours (e.g. when output is piped/redirected) |
+| `--no-color`      | Force-disable ANSI colours |
+| `--login`         | Log in to archive.org (unlocks restricted collections) |
+| `--logout`        | Remove the saved credentials file and clear the session |
+| `--config <path>` | Use a custom credentials file (default `~/.ia`) |
+| `--email <addr>`  | Supply the login email non-interactively |
+| `--password <pass>` | Supply the login password non-interactively |
+| `--type <glob>`   | Only download files matching a type/glob pattern |
+
+### Terminal colours
+
+When stdout is an interactive terminal, log levels and download status tags are
+colourised by default:
+
+| Element | Colour |
+|---------|--------|
+| `[ERROR]` / `[ERR]` | red |
+| `[WARN]`  / `[SKIP]` | yellow |
+| `[INFO]`  / `[DONE]` / `[OK]` | green |
+| `[DEBUG]` / `[GET]` | cyan |
+| `[TRACE]` | magenta |
+
+Colours are automatically disabled when output is redirected/not a TTY, when the
+`NO_COLOR` environment variable is set (https://no-color.org/), or with
+`--no-color`. Use `--color` to force colour output even when piped. On Windows,
+ANSI/VT processing is enabled automatically for Windows 10+ consoles.
+
+### Authentication & restricted collections
+
+archive.org marks many collections (e.g. `total-dos-collection-b`) as
+**access-restricted**; downloads return HTTP 401 unless you are logged in with an
+account that has been approved for access. To unlock these:
+
+```bash
+# Interactive prompt (hides the password as you type):
+archive_downloader --login <source_url> <destination_folder>
+
+# Login only, then download later:
+archive_downloader --login
+
+# Non-interactive, via environment (avoids exposing the password in shell history):
+export IA_EMAIL="you@example.com"
+export IA_PASSWORD="your-password"
+archive_downloader --login <source_url> <destination_folder>
+
+# Forgetting stored credentials:
+archive_downloader --logout
+```
+
+The session cookies (`logged-in-user`, `logged-in-sig`) are stored in `~/.ia` and
+are automatically loaded on subsequent runs, so you only need to log in again after
+they expire (typically a few days). Use `--config <path>` to keep credentials in a
+custom location.
+
+archive.org returns each login cookie as a full Set-Cookie string (with
+`domain`, `path`, `expires`, ... attributes). The tool automatically strips these
+attributes down to the bare cookie values before sending them, so the stored
+credentials stay valid across sessions - a login persists until the session
+expires server-side.
+
+Credential priority for `--login`: `--email`/`--password` arguments, then
+`IA_EMAIL`/`IA_PASSWORD` environment variables, then an interactive prompt.
+
+> **Note:** Passing credentials via `--email`/`--password` exposes them in your
+> shell history and process list. Prefer `IA_EMAIL`/`IA_PASSWORD` or the
+> interactive prompt.
+
+Once authenticated, restricted/private files are attempted (they may still return
+HTTP 401 if the account is not approved). Without authentication such files are
+skipped to avoid noise.
+
+### Logging format
+
+Every log line is prefixed with a timestamp and level tag:
+```
+[20:23:54] [INFO ] Archive.org Downloader starting
+[20:23:54] [DEBUG] Metadata URL: https://archive.org/metadata/softwarelibrary_msdos_showcase/files
+[20:23:54] [DEBUG] Parsed components: host='archive.org' port=443 scheme=2 path='/metadata/...'
+[20:23:55] [INFO ] HTTP response: 200 OK
+[20:23:55] [DEBUG] Read 1691 bytes total from response body.
+```
+
+### Examples
+
+```bash
+# Download the DOS game collection (default logging)
+archive_downloader https://archive.org/download/total-dos-collection-b ./downloads
+
+# Download restricted collection with an interactive login
+archive_downloader --login https://archive.org/download/total-dos-collection-b ./downloads
+
+# Downlod the MS-DOS software library with verbose logging
+archive_downloader -v https://archive.org/download/softwarelibrary_msdos_games ./games
+
+# Trace every request and HTTP header
+archive_downloader -vv https://archive.org/download/softwarelibrary_msdos_games ./games
+
+# Download only the .zip files in a collection
+archive_downloader --type "*.zip" https://archive.org/download/softwarelibrary_msdos_games ./games
+
+# Download only images (jpeg or png), matching anywhere in the filename
+archive_downloader --type "*.{jpg,jpeg,png}" https://archive.org/download/somecollection ./out
+
+# Download only files under an "iso/" subdirectory
+archive_downloader --type "iso/*" https://archive.org/download/somecollection ./out
+```
+
+The `--type` value is a glob supporting `*`, `?`, `[...]` character classes with
+ranges (e.g. `*.[0-9][0-9][0-9]`), and `{a,b,c}` alternation. Non-matching files
+are skipped and counted in the `Filtered` summary line.
+
+## How It Works
+
+1. Extracts the archive identifier from the URL (e.g. `total-dos-collection-b`)
+2. Fetches the file manifest from archive.org's metadata API
+3. For each public file, downloads it to the destination folder
+4. Files already fully downloaded are skipped
+5. Partial files are detected and resumed via HTTP `Range` headers
+
+## Dependencies
+
+- C11 compiler (GCC/Clang/MSVC)
+- CMake 3.10+
+- libcurl (Linux/macOS only)
+- [parson](https://github.com/kgabis/parson) JSON library (vendored in `src/`)

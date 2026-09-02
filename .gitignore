@@ -1,0 +1,29 @@
+# ---- Build artifacts ----
+/build/
+/build-win/
+/obj/
+/archive_downloader
+/archive_downloader.exe
+*.o
+*.obj
+*.a
+*.d
+
+# ---- CMake ----
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+CTestTestfile.cmake
+compile_commands.json
+
+# ---- Editor / OS ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ---- Credentials / secrets ----
+.ia

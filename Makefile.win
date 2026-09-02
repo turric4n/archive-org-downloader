@@ -1,0 +1,54 @@
+# GNU Makefile for archive-org-downloader (Windows / MinGW-w64)
+#
+# Requires: MinGW-w64 gcc (no external dependencies - uses WinHTTP)
+#
+# Usage:
+#   mingw32-make -f Makefile.win
+#
+# Cross-compile from Linux:
+#   make -f Makefile.win CC=x86_64-w64-mingw32-gcc TARGET=archive_downloader.exe
+
+CC       ?= gcc
+CFLAGS   ?= -O2 -Wall -Wextra -std=c11
+CPPFLAGS += -Isrc -D_WIN32_WINNT=0x0600
+LDLIBS   += -lwinhttp
+LDFLAGS  ?=
+
+SRC_DIR   = src
+OBJ_DIR   = build-win
+
+SOURCES = $(SRC_DIR)/main.c \
+          $(SRC_DIR)/log.c \
+          $(SRC_DIR)/util.c \
+          $(SRC_DIR)/color.c \
+          $(SRC_DIR)/http.c \
+          $(SRC_DIR)/auth.c \
+          $(SRC_DIR)/archive.c \
+          $(SRC_DIR)/downloader.c \
+          $(SRC_DIR)/parson.c
+
+OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))
+
+DEPS    = $(OBJECTS:.o=.d)
+
+TARGET  = archive_downloader.exe
+
+all: $(TARGET)
+
+$(TARGET): $(OBJECTS)
+	$(CC) $(LDFLAGS) -o $@ $(OBJECTS) $(LDLIBS)
+
+# Windows cmd shell: use 'if not exist' guard (no '-p' flag support).
+$(OBJ_DIR):
+	@if not exist "$(OBJ_DIR)" mkdir "$(OBJ_DIR)"
+
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
+	$(CC) $(CPPFLAGS) $(CFLAGS) -MMD -MP -c -o $@ $<
+
+-include $(DEPS)
+
+clean:
+	-if exist $(OBJ_DIR) rmdir /S /Q $(OBJ_DIR)
+	-if exist $(TARGET) del /Q $(TARGET)
+
+.PHONY: all clean
