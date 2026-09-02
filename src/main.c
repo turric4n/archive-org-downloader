@@ -13,7 +13,9 @@
 
 static void usage(const char *prog) {
     printf("Archive.org Downloader with Auto-Resume\n\n");
-    printf("Usage: %s [options] <source_url> <destination_folder>\n", prog);
+    printf("Usage: %s [options] <source_url> [destination_folder]\n", prog);
+    printf("       If destination_folder is omitted it defaults to\n");
+    printf("       './<archive-id>' (e.g. './total-dos-collection-b').\n");
     printf("       %s --login [email] [password]   (standalone: authorise only)\n", prog);
     printf("       %s --logout                     (remove saved credentials)\n\n", prog);
     printf("Options:\n");
@@ -39,6 +41,7 @@ static void usage(const char *prog) {
     printf("  %s --login                       # prompt for credentials only\n", prog);
     printf("  %s --logout                      # forget stored credentials\n", prog);
     printf("  %s -v https://archive.org/download/softwarelibrary_msdos_games ./games\n", prog);
+    printf("  %s https://archive.org/download/total-dos-collection-b   # -> ./total-dos-collection-b\n", prog);
     printf("\nFeatures:\n");
     printf("  - Automatically resumes interrupted downloads\n");
     printf("  - Skips already completed files\n");
@@ -225,25 +228,34 @@ int main(int argc, char *argv[]) {
         return rc;
     }
 
-    if (!have_src || !have_dest) {
-        LOG_E("Not enough arguments (expected source URL and destination folder).");
+    if (!have_src) {
+        LOG_E("Not enough arguments (expected a source URL).");
         usage(argv[0]);
         http_cleanup();
         return 1;
     }
 
-    LOG_I("Command line arguments parsed:");
-    LOG_I("  source_url           = %s", source_url);
-    LOG_I("  destination_folder   = %s", dest);
-    LOG_I("  credentials file     = %s", cfg_path_arg);
-
+    /* Derive the destination folder from the source URL when none is given,
+     * e.g. ./total-dos-collection-b for the URL above. */
     char id[512];
+    char default_dest[520]; /* "./" + id */
     if (extract_identifier(source_url, id, sizeof(id)) != 0) {
         LOG_E("Could not extract archive identifier from URL: %s", source_url);
         http_cleanup();
         return 1;
     }
     LOG_I("Extracted archive identifier: %s", id);
+
+    if (!have_dest) {
+        snprintf(default_dest, sizeof(default_dest), ".%c%s", PATHSEP, id);
+        dest = default_dest;
+        LOG_I("No destination given - using default: %s", dest);
+    }
+
+    LOG_I("Command line arguments parsed:");
+    LOG_I("  source_url           = %s", source_url);
+    LOG_I("  destination_folder   = %s", dest);
+    LOG_I("  credentials file     = %s", cfg_path_arg);
 
     /* Handle --login alongside a download: authenticate and store credentials. */
     if (want_login) {
