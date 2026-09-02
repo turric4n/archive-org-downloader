@@ -74,8 +74,13 @@ Makefile.win      GNU Makefile (Windows/MinGW, WinHTTP)
 ## Usage
 
 ```
-archive_downloader [-v | -vv] [--login] [--logout] [--config <path>] <source_url> <destination_folder>
+archive_downloader [-v | -vv] [--login] [--logout] [--config <path>] <source_url> [destination_folder]
 ```
+
+`destination_folder` is optional. When omitted, files are downloaded into
+`./<archive-id>` derived from the source URL — e.g.
+`archive_downloader https://archive.org/download/total-dos-collection-b`
+creates and uses `./total-dos-collection-b`.
 
 ### Options
 
@@ -168,7 +173,10 @@ Every log line is prefixed with a timestamp and level tag:
 ### Examples
 
 ```bash
-# Download the DOS game collection (default logging)
+# Download the DOS game collection into ./total-dos-collection-b (auto-derived)
+archive_downloader https://archive.org/download/total-dos-collection-b
+
+# Download into an explicit folder
 archive_downloader https://archive.org/download/total-dos-collection-b ./downloads
 
 # Download restricted collection with an interactive login
