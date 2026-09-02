@@ -35,6 +35,7 @@ jobs:
 
       - name: Build
         run: |-
+          mkdir -p build-win
           mingw32-make -f Makefile.win CC=gcc
 
       - name: Upload artifact
