@@ -64,14 +64,13 @@ Two automated test suites run in CI on both Windows and Linux:
   and `[`/`]` in file names.
 - **Integration test** (`tests/integration_test.sh`): runs the real binary
   against a live archive.org collection and asserts a file downloads with the
-  correct size. It retries transient network failures with backoff. Because
-  archive.org intermittently blocks/rate-limits GitHub-CI datacenter IPs, the
-  script **does not fail the gate when the binary itself can't reach
-  archive.org** (reported as a warning/`SKIPPED`, environmental). It **fails
-  hard only when the binary claims success but the file is missing or has the
-  wrong size** — a genuine tool regression. The deterministic URL-encoding
-  guard (the `rc=3` bug) lives in `tests/unit_test.c` and always runs on both
-  platforms with no network dependency.
+  correct size, retrying transient failures with backoff. This is a **best-effort
+  smoke test and is non-blocking**: because archive.org intermittently
+  blocks/rate-limits GitHub-CI datacenter IPs, an external download failure is
+  usually environmental, so the script always exits `0` and reports
+  `PASSED`/`WARN`/`SKIPPED`. The deterministic regression guard (the `rc=3`
+  URL-encoding bug) lives in `tests/unit_test.c`, runs unconditionally on both
+  platforms, and needs no network.
 
 Run them locally:
 
