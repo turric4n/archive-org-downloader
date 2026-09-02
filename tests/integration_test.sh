@@ -46,19 +46,20 @@ done
 
 if [ "$ok" -ne 1 ]; then
     echo "INTEGRATION TEST: binary did not download after $attempts attempts"
-    # Distinguish a tool regression from archive.org blocking/rate-limiting
-    # GitHub-CI datacenter IPs (a well-known external condition that would make
-    # this a flaky gate). Probe archive.org directly: if it is reachable and
-    # serves the item, a failure here is our bug -> hard-fail; if archive.org
-    # is unreachable/blocked, report as environmental and do not fail the gate.
-    probe_url="https://archive.org/metadata/${ID}"
+    # Distinguish a tool regression from archive.org intermittently blocking /
+    # rate-limiting GitHub-CI datacenter IPs (a well-known external condition
+    # that would otherwise make this a flaky gate). Probe the ACTUAL download
+    # URL directly: if archive.org serves it, a failure here is our bug ->
+    # hard-fail; if the file/mirror is unreachable/blocked from this runner,
+    # report as environmental and do not fail the gate.
+    probe_url="https://archive.org/download/${ID}/goodytwoshoes00newyiala_djvu.txt"
     probe_status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 20 "${probe_url}" 2>/dev/null)
-    echo "archive.org probe status: ${probe_status:-unreachable}"
+    echo "archive.org file probe status: ${probe_status:-unreachable}"
     if [ "${probe_status:-000}" = "200" ]; then
-        echo "INTEGRATION TEST FAILED: archive.org reachable but download failed (tool regression)"
+        echo "INTEGRATION TEST FAILED: archive.org serves the file but the binary did not (tool regression)"
         exit 1
     fi
-    echo "INTEGRATION TEST SKIPPED (environmental): archive.org unreachable/blocked from this runner (probe=${probe_status:-000})"
+    echo "INTEGRATION TEST SKIPPED (environmental): archive.org file unreachable/blocked from this runner (probe=${probe_status:-000})"
     exit 0
 fi
 
