@@ -16,11 +16,8 @@ env:
 
 jobs:
   build-windows:
-    name: Build Windows (MinGW)
+    name: Build Windows (MSVC)
     runs-on: windows-latest
-    defaults:
-      run:
-        shell: msys2 {0}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -45,31 +42,34 @@ jobs:
           echo "ver=$ver" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $ver"
 
-      - name: Set up MSYS2 with MinGW-w64
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: UCRT64
-          update: true
-          install: >-
-            mingw-w64-ucrt-x86_64-gcc
-            mingw-w64-ucrt-x86_64-make
+      - name: Configure (Visual Studio)
+        shell: bash
+        run: |-
+          cmake -S . -B build \
+            -G "Visual Studio 17 2022" -A x64 \
+            -DVERSION="${{ steps.tag.outputs.ver }}" \
+            -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
-        run: |-
-          mkdir -p build-win
-          mingw32-make -f Makefile.win CC=gcc VERSION="${{ steps.tag.outputs.ver }}"
+        shell: bash
+        run: cmake --build build --config Release --parallel
 
       - name: Run unit tests
-        run: mingw32-make -f Makefile.win CC=gcc test-unit
+        shell: bash
+        run: ./build/Release/unit_test.exe
 
       - name: Run integration tests
-        run: mingw32-make -f Makefile.win CC=gcc test-integration
+        shell: bash
+        run: |-
+          mkdir -p build-test
+          bash tests/integration_test.sh ./build/Release/archive_downloader.exe \
+              ./build-test/dest
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: archive_downloader-windows
-          path: ${{ env.BINARY }}.exe
+          path: build/Release/${{ env.BINARY }}.exe
 
   build-linux:
     name: Build Linux (libcurl)

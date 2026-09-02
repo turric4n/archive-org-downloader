@@ -1,6 +1,5 @@
-# ---- Build artifacts ----
+# ---- Build artifacts ---- 
 /build/
-/build-win/
 /build-test/
 /obj/
 /archive_downloader

@@ -4,7 +4,12 @@ project(archive_downloader C)
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
+# Compiler warnings: GCC/Clang use -Wall -Wextra; MSVC uses /W4.
+if(MSVC)
+    add_compile_options(/W4)
+else()
+    add_compile_options(-Wall -Wextra)
+endif()
 
 # Build version, embedded via -DVERSION. Override at configure time with:
 #   cmake -DVERSION="$(git describe --tags --always)"
@@ -57,9 +62,8 @@ endif()
 add_test(NAME unit COMMAND unit_test)
 
 # End-to-end integration test (requires network access to archive.org).
-# Runs the built binary against a live collection. Enabled on POSIX where
-# bash path resolution is predictable; on Windows the same check runs in CI via
-# the Makefiles (Makefile.win), where the MSYS2 shell maps paths correctly.
+# Enabled on POSIX (git-bash) where the run of "bash" is predictable. On Windows
+# the same check runs directly in CI via `bash tests/integration_test.sh`.
 if(NOT WIN32)
     find_program(BASH_CMD bash)
     if(BASH_CMD)

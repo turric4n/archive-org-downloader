@@ -13,31 +13,28 @@ A C console application for downloading complete collections from archive.org wi
 
 ## Build
 
-### Windows (native, no external deps)
+### Windows (native, MSVC, no external deps)
 
-Option A - CMake (recommended):
-
-```bash
-cmake -B build -G "MinGW Makefiles"
-cmake --build build
-```
-
-Option B - Makefile.win (MinGW):
+Built with Microsoft Visual C++ via CMake. Requires a VS 2019+ or a "Desktop
+development with C++" workload (the WinHTTP backend has no third-party deps).
 
 ```bash
-mingw32-make -f Makefile.win CC=gcc
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Release
 ```
+
+The release binary is `build/Release/archive_downloader.exe`.
 
 #### Windows Defender false positive
 
-Some Microsoft Defender builds heuristically flag MinGW-w64-compiled executables as
-`Trojan:Script/Sabsik.FL.A!ml` (note the `!ml` machine-learning classifier suffix).
-This is a **known false positive** for native MinGW binaries, not actual malware:
-a real `Sabsik` is a JavaScript/VBScript dropper and cannot be a compiled `.exe` like
-this one. Before trusting any AV verdict, confirm the binary by building it yourself
-from source (see above) and check the build history in `docs`/releases. If you still
-see the alert, submit the built `.exe` as a false positive to Microsoft or run a
-second-opinion scan (e.g. VirusTotal) on a binary you compiled locally.
+Some Microsoft Defender builds heuristically flag freshly compiled native
+executables as `Trojan:Script/Sabsik.FL.A!ml` (note the `!ml` machine-learning
+classifier suffix). This is a **known false positive**, not actual malware: a
+real `Sabsik` is a JavaScript/VBScript dropper and cannot be a compiled `.exe`
+like this one. Before trusting any AV verdict, verify the binary by building it
+yourself from source (see above) or cross-checking a build you compiled locally.
+If the alert persists, submit the locally-built `.exe` as a false positive to
+Microsoft or run a second-opinion scan (e.g. VirusTotal).
 
 ### Linux/macOS
 
@@ -60,9 +57,8 @@ Option B - Makefile:
 make
 ```
 
-The POSIX `Makefile` and Windows `Makefile.win` use separate object directories
-(`obj/` and `build-win/` respectively), so they don't collide with the CMake
-`build/` output.
+The POSIX `Makefile` and the CMake `build/` output use separate directories, so
+they don't collide.
 
 ## Testing
 
@@ -87,7 +83,7 @@ Run them locally:
 
 ```bash
 make test                # Linux/macOS: unit + integration
-mingw32-make -f Makefile.win CC=gcc test   # Windows (MinGW)
+ctest --test-dir build   # Windows (MSVC) or any CMake build: unit
 ```
 
 CI runs `test-unit` and `test-integration` as part of every push, so a broken
@@ -106,9 +102,8 @@ src/
   archive.h/.c  archive.org metadata JSON fetch/parse
   downloader.h/.c  Per-file download loop, resume detection, progress UI
   parson.h/.c   Vendored JSON parser
-CMakeLists.txt
+CMakeLists.txt       Build (MSVC on Windows, any compiler on POSIX)
 Makefile          GNU Makefile (Linux/macOS, libcurl)
-Makefile.win      GNU Makefile (Windows/MinGW, WinHTTP)
 ```
 
 ## Usage
@@ -284,5 +279,4 @@ version string is compiled into every binary and reported by
 you are running.
 
 Builds default `VERSION` to `dev` for local compiles. To embed a version
-locally: `cmake -DVERSION="v1.0.0"`, `make VERSION="v1.0.0"`, or
-`mingw32-make -f Makefile.win VERSION="v1.0.0"`.
+locally: `cmake -DVERSION="v1.0.0"` or `make VERSION="v1.0.0"`.
