@@ -86,11 +86,21 @@ jobs:
           chmod +x release/*
           ls -la release/
 
+      - name: Resolve release tag
+        shell: bash
+        id: tag
+        run: |-
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "rel_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "rel_tag=${{ github.ref_name }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: release/*
-          tag_name: ${{ github.ref_name }}
-          name: archive_downloader ${{ github.ref_name }}
+          tag_name: ${{ steps.tag.outputs.rel_tag }}
+          name: archive_downloader ${{ steps.tag.outputs.rel_tag }}
           generate_release_notes: true
           fail_on_unmatched_files: true
