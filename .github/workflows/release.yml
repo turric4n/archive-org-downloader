@@ -24,6 +24,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve release tag
+        shell: bash
+        id: tag
+        run: |-
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "rel_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "rel_tag=${{ github.ref_name }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Set up MSYS2 with MinGW-w64
         uses: msys2/setup-msys2@v2
         with:
@@ -36,7 +46,7 @@ jobs:
       - name: Build
         run: |-
           mkdir -p build-win
-          mingw32-make -f Makefile.win CC=gcc
+          mingw32-make -f Makefile.win CC=gcc VERSION="${{ steps.tag.outputs.rel_tag }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -50,14 +60,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Resolve release tag
+        shell: bash
+        id: tag
+        run: |-
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            echo "rel_tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "rel_tag=${{ github.ref_name }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install dependencies
         run: |-
           sudo apt-get update
-          sudo apt-get install -y libcurl4-openssl-dev
+          sudo apt-get install -y libcurl4-openssl-dev tar zip
 
       - name: Build
         run: |-
-          make CC=gcc
+          make CC=gcc VERSION="${{ steps.tag.outputs.rel_tag }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -70,22 +90,6 @@ jobs:
     needs: [build-windows, build-linux]
     runs-on: ubuntu-latest
     steps:
-      - name: Download built artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-          merge-multiple: true
-
-      - name: Rename binaries
-        shell: bash
-        run: |-
-          ls -la artifacts/
-          mkdir -p release
-          mv artifacts/${{ env.BINARY }}.exe release/${{ env.BINARY }}-windows-x64.exe
-          mv artifacts/${{ env.BINARY }} release/${{ env.BINARY }}-linux-x64
-          chmod +x release/*
-          ls -la release/
-
       - name: Resolve release tag
         shell: bash
         id: tag
@@ -96,11 +100,40 @@ jobs:
             echo "rel_tag=${{ github.ref_name }}-${{ github.sha }}" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Download built artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Package archives
+        shell: bash
+        run: |-
+          set -e
+          rel_tag="${{ steps.tag.outputs.rel_tag }}"
+          mkdir -p release
+
+          # Linux: uniform inner name 'archive_downloader' at archive root
+          tar -C artifacts -czf release/${BINARY}-${rel_tag}-linux-x86_64.tar.gz ${BINARY}
+
+          # Windows: uniform inner name 'archive_downloader.exe' in a .zip
+          (cd artifacts && zip ../release/${BINARY}-${rel_tag}-windows-x86_64.zip ${BINARY}.exe)
+
+          echo "--- archives ---"
+          ls -la release/
+
+      - name: Generate checksums
+        shell: bash
+        run: |-
+          cd release
+          sha256sum * > checksums.txt
+          cat checksums.txt
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: release/*
           tag_name: ${{ steps.tag.outputs.rel_tag }}
-          name: archive_downloader ${{ steps.tag.outputs.rel_tag }}
+          name: ${{ env.BINARY }} ${{ steps.tag.outputs.rel_tag }}
           generate_release_notes: true
           fail_on_unmatched_files: true

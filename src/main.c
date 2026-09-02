@@ -11,6 +11,12 @@
 #include "archive.h"
 #include "downloader.h"
 
+/* Version of this build. Override at compile time with -DVERSION="..." (e.g. a
+ * release tag or commit). Defaults to "dev" for local builds. */
+#ifndef VERSION
+#define VERSION "dev"
+#endif
+
 static void usage(const char *prog) {
     printf("Archive.org Downloader with Auto-Resume\n\n");
     printf("Usage: %s [options] <source_url> [destination_folder]\n", prog);
@@ -21,6 +27,7 @@ static void usage(const char *prog) {
     printf("Options:\n");
     printf("  -v, --verbose          Show detailed logging\n");
     printf("  -vv, --trace           Show trace-level logging (HTTP internals)\n");
+    printf("  -V, --version          Print the version string and exit\n");
     printf("  --login                Log in to archive.org (unlocks restricted collections)\n");
     printf("  --logout               Remove the saved credentials file\n");
     printf("  --config <path>        Use a custom credentials file (default ~/.ia)\n");
@@ -132,11 +139,16 @@ static int do_logout(const char *cfg_path) {
 
 int main(int argc, char *argv[]) {
     color_init();
-    /* Honour --color / --no-color before the opening banner is printed so the
-     * banner itself uses the requested colour scheme. */
+    /* Honour --color / --no-color / --version before the opening banner is
+     * printed so it uses the requested colour scheme and --version is clean. */
     for (int a = 1; a < argc; a++) {
         if (strcmp(argv[a], "--color") == 0) color_enable();
         else if (strcmp(argv[a], "--no-color") == 0) color_disable();
+        else if (strcmp(argv[a], "-V") == 0 ||
+                 strcmp(argv[a], "--version") == 0) {
+            printf("archive_downloader %s\n", VERSION);
+            return 0;
+        }
     }
     LOG_I("==================================================");
     LOG_I("  Archive.org Downloader starting");

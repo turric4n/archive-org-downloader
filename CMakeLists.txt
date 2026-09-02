@@ -6,6 +6,10 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra")
 
+# Build version, embedded via -DVERSION. Override at configure time with:
+#   cmake -DVERSION="$(git describe --tags --always)"
+set(VERSION "dev" CACHE STRING "Version string embedded in the binary")
+
 # Core source set (shared by all platforms)
 set(SOURCES
     src/main.c
@@ -21,6 +25,7 @@ set(SOURCES
 
 add_executable(archive_downloader ${SOURCES})
 target_include_directories(archive_downloader PRIVATE src)
+target_compile_definitions(archive_downloader PRIVATE VERSION="${VERSION}")
 
 if(WIN32)
     # WinHTTP backend requires no external dependencies

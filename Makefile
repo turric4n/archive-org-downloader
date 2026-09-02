@@ -11,6 +11,13 @@ CPPFLAGS += -Isrc
 LDLIBS   += -lcurl
 LDFLAGS  ?=
 
+# Build version, embedded via -DVERSION. Override with:
+#   make VERSION="$(git describe --tags --always)"
+ifndef VERSION
+VERSION := dev
+endif
+CPPFLAGS += -DVERSION=\"$(VERSION)\"
+
 SRC_DIR   = src
 OBJ_DIR   = obj
 

@@ -88,6 +88,7 @@ creates and uses `./total-dos-collection-b`.
 |------|-------------|
 | `-v`, `--verbose` | Enable detailed logging (INFO + DEBUG + ERROR) |
 | `-vv`, `--trace`  | Enable maximum trace logging (adds TRACE level) |
+| `-V`, `--version` | Print the build version string and exit |
 | `--color`         | Force-enable ANSI colours (e.g. when output is piped/redirected) |
 | `--no-color`      | Force-disable ANSI colours |
 | `--login`         | Log in to archive.org (unlocks restricted collections) |
@@ -218,3 +219,25 @@ are skipped and counted in the `Filtered` summary line.
 - [parson](https://github.com/kgabis/parson) JSON library (vendored in `src/`)
 ---
 Continuous integration and release builds are provided via GitHub Actions (see .github/workflows/release.yml). Releases are produced on every push to master and on version tags.
+
+### Release artifacts
+
+Each release ships the same-named binary per platform, packaged into archives
+whose *filename* carries the version and platform. The binary **inside** an
+archive is always `archive_downloader` (Linux) or `archive_downloader.exe`
+(Windows):
+
+| Platform | Archive asset | Inner binary |
+|----------|---------------|--------------|
+| Linux    | `archive_downloader-<version>-linux-x86_64.tar.gz` | `archive_downloader` |
+| Windows  | `archive_downloader-<version>-windows-x86_64.zip` | `archive_downloader.exe` |
+| Both     | `checksums.txt` | SHA256 of every asset |
+
+The `<version>` is the git tag for version releases (`v1.0.0`) and
+`master-<sha>` for branch builds. The version string is compiled into every
+binary and reported by `archive_downloader --version`, so you can always
+identify exactly which build you are running.
+
+Builds default `VERSION` to `dev` for local compiles. To embed a version
+locally: `cmake -DVERSION="v1.0.0"`, `make VERSION="v1.0.0"`, or
+`mingw32-make -f Makefile.win VERSION="v1.0.0"`.

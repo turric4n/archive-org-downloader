@@ -14,6 +14,13 @@ CPPFLAGS += -Isrc -D_WIN32_WINNT=0x0600
 LDLIBS   += -lwinhttp
 LDFLAGS  ?=
 
+# Build version, embedded via -DVERSION. Override with:
+#   mingw32-make -f Makefile.win VERSION="$(ver)"
+ifndef VERSION
+VERSION := dev
+endif
+CPPFLAGS += -DVERSION=\"$(VERSION)\"
+
 SRC_DIR   = src
 OBJ_DIR   = build-win
 
