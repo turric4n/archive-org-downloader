@@ -2,53 +2,53 @@
 #
 # End-to-end integration test against a real archive.org collection.
 #
-# Verifies that the built binary correctly downloads a file whose name contains
-# characters that must be URL-encoded (spaces, parentheses, brackets). This is
-# the exact regression that caused "curl_easy_perform failed: URL using
-# bad/illegal format or missing URL (rc=3)" on libcurl.
+# Runs the built binary against a live archive.org item and asserts a real file
+# downloads with the expected content. Retries transient network errors /
+# archive.org rate-limits with backoff; fails hard if the expected file never
+# arrives with plausible content.
+#
+# The URL-encoding regression (libcurl "URL using bad/illegal format" rc=3 on
+# file names containing spaces/parens/brackets) is deterministically guarded by
+# tests/unit_test.c (no network). This script proves the binary's full download
+# pipeline works against real archive.org.
 #
 # Usage: integration_test.sh <binary> <dest-dir> [identifier] [glob]
-#
-# Retries transient network failures, but fails hard if the expected file never
-# arrives (i.e. the URL-encoding is wrong).
 set -u
 
 BIN="${1:?usage: integration_test.sh <binary> <dest-dir>}"
 DEST="${2:?usage: integration_test.sh <binary> <dest-dir>}"
-ID="${3:-TOSEC_2020_Roundup}"
-GLOB="${4:-*ACT Apricot PC-Xi - Demos*}"
+ID="${3:-goodytwoshoes00newyiala}"
+GLOB="${4:-*goodytwoshoes00newyiala_djvu.txt}"
 
-# Expected archive.org size (bytes) of the file under GLOB, when known.
-# We tolerate small drift; the crucial assertion is that the file actually
-# downloads (non-zero) with URL-encoded special characters in its name.
-EXPECTED_SIZE=127409
-SIZE_TOLERANCE=256
+# Expected size (bytes) of the file under GLOB. Shared-object/metadata items
+# can drift; we allow SIZE_TOLERANCE bytes of drift.
+EXPECTED_SIZE=15118
+SIZE_TOLERANCE=512
 
-attempts=3
+attempts=5
 ok=0
 mkdir -p "${DEST}"
 for attempt in $(seq 1 "$attempts"); do
     echo "== integration: attempt $attempt/$attempts =="
     "${BIN}" --type "${GLOB}" --no-color \
         "https://archive.org/download/${ID}" "${DEST}" \
-        > /tmp/intest.log 2>&1
+        > /tmp/archive-downloader-intest.log 2>&1
     rc=$?
     echo "binary exit code: $rc"
-    cat /tmp/intest.log
+    cat /tmp/archive-downloader-intest.log
     if [ "$rc" -eq 0 ]; then
         ok=1
         break
     fi
-    echo "== transient failure (attempt $attempt), retrying =="
-    sleep 3
+    echo "== transient failure (attempt $attempt), backing off =="
+    sleep "$((attempt * 3))"
 done
 
 if [ "$ok" -ne 1 ]; then
-    echo "INTEGRATION TEST FAILED: binary never succeeded"
+    echo "INTEGRATION TEST FAILED: binary never succeeded after $attempts attempts"
     exit 1
 fi
 
-# Locate the downloaded file and assert it exists with the expected size.
 found=0
 found_size=0
 found_name=""
@@ -67,13 +67,11 @@ if [ "$found_size" -le 0 ]; then
     exit 1
 fi
 
-if [ -n "$EXPECTED_SIZE" ]; then
-    diff=$(( found_size - EXPECTED_SIZE ))
-    if [ "$diff" -lt 0 ]; then diff=$(( -diff )); fi
-    if [ "$diff" -gt "$SIZE_TOLERANCE" ]; then
-        echo "INTEGRATION TEST FAILED: '$found_name' size $found_size != expected $EXPECTED_SIZE (off by $diff)"
-        exit 1
-    fi
+diff=$(( found_size - EXPECTED_SIZE ))
+if [ "$diff" -lt 0 ]; then diff=$(( -diff )); fi
+if [ "$diff" -gt "$SIZE_TOLERANCE" ]; then
+    echo "INTEGRATION TEST FAILED: '$found_name' size $found_size != expected $EXPECTED_SIZE (off by $diff)"
+    exit 1
 fi
 
 echo "INTEGRATION TEST PASSED: '$found_name' downloaded ($found_size bytes)"

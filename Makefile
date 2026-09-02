@@ -51,15 +51,14 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 -include $(DEPS)
 
 clean:
-	rm -rf $(OBJ_DIR) $(TARGET) build-test
+	rm -rf $(OBJ_DIR) $(TARGET) build-test $(UNIT_BIN)
 
 # ---- Tests ----
 # Unit tests (no network). Links util.c only; runs on any platform.
-UNIT_SRC = tests/unit_test.c $(SRC_DIR)/util.c
-UNIT_BIN = build-test/unit_test
+UNIT_SRC = tests/unit_test.c src/util.c
+UNIT_BIN = unit_test
 
 $(UNIT_BIN): $(UNIT_SRC) src/util.h tests/unit_test.c
-	@mkdir -p build-test
 	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $(UNIT_SRC)
 
 test-unit: $(UNIT_BIN)

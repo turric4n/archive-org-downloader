@@ -5,6 +5,8 @@
 /obj/
 /archive_downloader
 /archive_downloader.exe
+/unit_test
+/unit_test.exe
 *.o
 *.obj
 *.a
