@@ -66,9 +66,12 @@ Two automated test suites run in CI on both Windows and Linux:
   against a live archive.org collection and asserts a file downloads with the
   correct size. It retries transient network failures with backoff. Because
   archive.org intermittently blocks/rate-limits GitHub-CI datacenter IPs, the
-  script treats "archive.org unreachable from the runner" as environmental and
-  skips rather than failing, while **failing hard** when archive.org is
-  reachable but the download misbehaves (a genuine tool regression).
+  script **does not fail the gate when the binary itself can't reach
+  archive.org** (reported as a warning/`SKIPPED`, environmental). It **fails
+  hard only when the binary claims success but the file is missing or has the
+  wrong size** — a genuine tool regression. The deterministic URL-encoding
+  guard (the `rc=3` bug) lives in `tests/unit_test.c` and always runs on both
+  platforms with no network dependency.
 
 Run them locally:
 
