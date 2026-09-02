@@ -59,6 +59,12 @@ jobs:
           mkdir -p build-win
           mingw32-make -f Makefile.win CC=gcc VERSION="${{ steps.tag.outputs.ver }}"
 
+      - name: Run unit tests
+        run: mingw32-make -f Makefile.win CC=gcc test-unit
+
+      - name: Run integration tests
+        run: mingw32-make -f Makefile.win CC=gcc test-integration
+
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
@@ -100,6 +106,12 @@ jobs:
       - name: Build
         run: |-
           make CC=gcc VERSION="${{ steps.tag.outputs.ver }}"
+
+      - name: Run unit tests
+        run: make CC=gcc test-unit
+
+      - name: Run integration tests
+        run: make CC=gcc test-integration
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

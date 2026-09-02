@@ -56,6 +56,24 @@ $(OBJ_DIR)/%.o: $(SRC_DIR)/%.c | $(OBJ_DIR)
 
 clean:
 	-if exist $(OBJ_DIR) rmdir /S /Q $(OBJ_DIR)
+	-if exist build-test rmdir /S /Q build-test
 	-if exist $(TARGET) del /Q $(TARGET)
 
-.PHONY: all clean
+# ---- Tests ----
+# Unit tests (no network). Links util.c only; runs on any platform.
+UNIT_SRC = tests/unit_test.c src/util.c
+UNIT_BIN = build-test/unit_test
+
+$(UNIT_BIN): $(UNIT_SRC) src/util.h
+	@if not exist "build-test" mkdir "build-test"
+	$(CC) $(CPPFLAGS) $(CFLAGS) -o $@ $(UNIT_SRC)
+
+test-unit: $(UNIT_BIN)
+	$(UNIT_BIN)
+
+test-integration: $(TARGET)
+	sh tests/integration_test.sh ./$(TARGET) ./build-test/dest
+
+test: test-unit test-integration
+
+.PHONY: all clean test test-unit test-integration

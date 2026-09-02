@@ -44,6 +44,10 @@ int extract_identifier(const char *url, char *out, size_t out_sz);
 
 char *str_dup(const char *s);
 
+/* Percent-encode a URL path while preserving '/' separators (RFC 3986).
+   Returns the encoded length, or -1 if `out` is too small. */
+int url_encode_path(const char *in, char *out, size_t out_sz);
+
 /* Read a line from stdin without echoing the typed characters (for passwords).
    Returns 0 on success; the result is written into `out` (NUL-terminated). */
 int read_password(char *out, size_t out_sz);

@@ -53,6 +53,31 @@ The POSIX `Makefile` and Windows `Makefile.win` use separate object directories
 (`obj/` and `build-win/` respectively), so they don't collide with the CMake
 `build/` output.
 
+## Testing
+
+Two automated test suites run in CI on both Windows and Linux:
+
+- **Unit tests** (`tests/unit_test.c`, deterministic, no network): verify URL
+  path encoding, archive-identifier extraction, glob matching and size
+  formatting. The URL-encoding tests guard against the libcurl
+  `URL using bad/illegal format` (rc=3) failure caused by raw spaces, `(`/`)`
+  and `[`/`]` in file names.
+- **Integration test** (`tests/integration_test.sh`): runs the real binary
+  against a live archive.org collection and asserts a file whose name contains
+  special characters (spaces, parentheses, brackets) downloads with the correct
+  size. Bulk `archive.org` HTTP request limits are avoided and transient network
+  failures are retried.
+
+Run them locally:
+
+```bash
+make test                # Linux/macOS: unit + integration
+mingw32-make -f Makefile.win CC=gcc test   # Windows (MinGW)
+```
+
+CI runs `test-unit` and `test-integration` as part of every push, so a broken
+URL build or encoding regression fails the build before any release is cut.
+
 ## Project Layout
 
 ```

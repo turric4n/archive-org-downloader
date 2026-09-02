@@ -44,11 +44,19 @@ static void build_local_path(const char *dest, const char *name,
 #endif
 }
 
-/* Returns the URL of a file within the archive. */
+/* Returns the URL of a file within the archive. The file name is
+   percent-encoded (spaces, parens, brackets, etc.) so the resulting URL is
+   valid for both libcurl and WinHTTP. */
 static void build_download_url(const char *identifier, const char *name,
                                char *out, size_t out_sz) {
+    char enc[2048];
+    if (url_encode_path(name, enc, sizeof(enc)) < 0) {
+        LOG_E("File name too long to encode into URL: '%s'", name);
+        if (out_sz) out[0] = 0;
+        return;
+    }
     snprintf(out, out_sz, "https://archive.org/download/%s/%s",
-             identifier, name);
+             identifier, enc);
 }
 
 int download_all(const char *identifier, const char *dest,
@@ -91,7 +99,7 @@ int download_all(const char *identifier, const char *dest,
         double sz = sizes ? sizes[i] : 0;
         long fsz = (long)sz;
 
-        char url[2048], path[4096];
+        char url[4096], path[4096];
         build_download_url(identifier, name, url, sizeof(url));
         build_local_path(dest, name, path, sizeof(path));
         LOG_D("Download URL : %s", url);

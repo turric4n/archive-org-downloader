@@ -42,3 +42,29 @@ if(MSVC)
 endif()
 
 install(TARGETS archive_downloader DESTINATION bin)
+
+# ---- Tests ----
+# Deterministic unit tests (no network). Link util.c only; run anywhere.
+enable_testing()
+add_executable(unit_test tests/unit_test.c src/util.c)
+target_include_directories(unit_test PRIVATE src)
+if(MSVC)
+    target_compile_definitions(unit_test PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+add_test(NAME unit COMMAND unit_test)
+
+# End-to-end integration test (requires network access to archive.org).
+# Runs the built binary against a live collection. Enabled on POSIX where
+# bash path resolution is predictable; on Windows the same check runs in CI via
+# the Makefiles (Makefile.win), where the MSYS2 shell maps paths correctly.
+if(NOT WIN32)
+    find_program(BASH_CMD bash)
+    if(BASH_CMD)
+        add_test(
+            NAME integration
+            COMMAND ${BASH_CMD} ${CMAKE_CURRENT_SOURCE_DIR}/tests/integration_test.sh
+                    $<TARGET_FILE:archive_downloader>
+                    ${CMAKE_CURRENT_BINARY_DIR}/build-test/dest
+        )
+    endif()
+endif()

@@ -97,6 +97,32 @@ char *str_dup(const char *s) {
     return d;
 }
 
+/* Percent-encode a URL path segment, preserving '/' so sub-directory paths
+   inside filenames survive. Bytes outside the RFC 3986 unreserved set are
+   encoded as %XX. Returns the encoded length, or -1 if `out` is too small. */
+int url_encode_path(const char *in, char *out, size_t out_sz) {
+    static const char hex[] = "0123456789ABCDEF";
+    if (!out_sz) return -1;
+    size_t o = 0;
+    for (const unsigned char *p = (const unsigned char *)in; *p; p++) {
+        unsigned char c = *p;
+        int safe = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                   (c >= '0' && c <= '9') || c == '/' || c == '-' ||
+                   c == '_' || c == '.' || c == '~';
+        if (safe) {
+            if (o + 1 >= out_sz) return -1;
+            out[o++] = (char)c;
+        } else {
+            if (o + 3 >= out_sz) return -1;
+            out[o++] = '%';
+            out[o++] = hex[c >> 4];
+            out[o++] = hex[c & 0xF];
+        }
+    }
+    out[o] = 0;
+    return (int)o;
+}
+
 #ifdef _WIN32
 #include <windows.h>
 #else
