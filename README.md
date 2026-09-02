@@ -208,3 +208,5 @@ are skipped and counted in the `Filtered` summary line.
 - CMake 3.10+
 - libcurl (Linux/macOS only)
 - [parson](https://github.com/kgabis/parson) JSON library (vendored in `src/`)
+---
+Continuous integration and release builds are provided via GitHub Actions (see .github/workflows/release.yml). Releases are produced on every push to master and on version tags.
