@@ -28,6 +28,17 @@ Option B - Makefile.win (MinGW):
 mingw32-make -f Makefile.win CC=gcc
 ```
 
+#### Windows Defender false positive
+
+Some Microsoft Defender builds heuristically flag MinGW-w64-compiled executables as
+`Trojan:Script/Sabsik.FL.A!ml` (note the `!ml` machine-learning classifier suffix).
+This is a **known false positive** for native MinGW binaries, not actual malware:
+a real `Sabsik` is a JavaScript/VBScript dropper and cannot be a compiled `.exe` like
+this one. Before trusting any AV verdict, confirm the binary by building it yourself
+from source (see above) and check the build history in `docs`/releases. If you still
+see the alert, submit the built `.exe` as a false positive to Microsoft or run a
+second-opinion scan (e.g. VirusTotal) on a binary you compiled locally.
+
 ### Linux/macOS
 
 Requires libcurl dev package:

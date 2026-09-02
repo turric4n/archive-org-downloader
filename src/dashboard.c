@@ -365,6 +365,9 @@ static void render_locked(void) {
     g_last_render = time(NULL);
     Layout lo = layout();
 
+    fputs(ESC "H", stdout);  /* cursor to home (1,1) so frames overwrite in place */
+    fputs(ESC "J", stdout);  /* clear any leftover lines below so nothing scrolls */
+
     /* top border */
     fputs(B_TL, stdout);
     for (int i = 0; i < g_width - 2; i++) fputs(B_H, stdout);
