@@ -43,6 +43,22 @@ static void progress_display(const void *data, size_t len, void *user) {
     double eta = total > 0 ? (total - cur) / speed : 0;
 
     if (dash_active()) {
+        if (dc->agg_bytes_done && dc->agg_mutex) {
+            thrd_mutex_lock(dc->agg_mutex);
+            *(dc->agg_bytes_done) += (long)len;
+            if (dc->agg_stats) {
+                DownloadStats *st = (DownloadStats *)dc->agg_stats;
+                DashCounters a;
+                a.downloaded = st->downloaded;
+                a.skipped = st->skipped;
+                a.restricted = st->restricted;
+                a.filtered = st->filtered;
+                a.failed = st->failed;
+                a.bytes_done = *(dc->agg_bytes_done);
+                dash_set_agg(&a);
+            }
+            thrd_mutex_unlock(dc->agg_mutex);
+        }
         dash_set_worker(dc->slot, dc->downloaded, dc->total_size,
                         dc->resume_from, speed, eta);
         dash_tick();
@@ -96,10 +112,22 @@ typedef struct {
     size_t count;
     size_t next;
     DownloadStats *stats;
+    long bytes_done;
     thrd_mutex mutex;
 } DownloadShared;
 
 static void download_one(void *arg);
+
+static void push_agg(DownloadShared *sh) {
+    DashCounters a;
+    a.downloaded = sh->stats->downloaded;
+    a.skipped = sh->stats->skipped;
+    a.restricted = sh->stats->restricted;
+    a.filtered = sh->stats->filtered;
+    a.failed = sh->stats->failed;
+    a.bytes_done = sh->bytes_done;
+    dash_set_agg(&a);
+}
 
 static void count_one(DownloadShared *sh, int kind) {
     thrd_mutex_lock(&sh->mutex);
@@ -111,6 +139,7 @@ static void count_one(DownloadShared *sh, int kind) {
         case 4:  s->restricted++; break;
         case 5:  s->filtered++;   break;
     }
+    push_agg(sh);
     thrd_mutex_unlock(&sh->mutex);
 }
 
@@ -281,6 +310,9 @@ static void download_one(void *arg) {
         dc.index = (int)(i + 1);
         dc.total_files = (int)sh->count;
         dc.slot = slot;
+        dc.agg_stats = sh->stats;
+        dc.agg_bytes_done = &sh->bytes_done;
+        dc.agg_mutex = &sh->mutex;
 
         dash_begin_worker(slot, name, (int)(i + 1), (int)sh->count);
 

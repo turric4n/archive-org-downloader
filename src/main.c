@@ -343,7 +343,20 @@ int main(int argc, char *argv[]) {
     }
 
     DownloadStats stats;
-    if (want_dashboard) dash_init();
+    if (want_dashboard) {
+        DashLaunch l;
+        memset(&l, 0, sizeof(l));
+        snprintf(l.version, sizeof(l.version), "%s", VERSION);
+        snprintf(l.source_url, sizeof(l.source_url), "%s", source_url);
+        snprintf(l.destination, sizeof(l.destination), "%s", dest);
+        snprintf(l.identifier, sizeof(l.identifier), "%s", id);
+        snprintf(l.user, sizeof(l.user), "%s",
+                 auth_email() && auth_email()[0] ? auth_email() : "");
+        if (type_pattern) snprintf(l.filter, sizeof(l.filter), "%s", type_pattern);
+        l.threads = threads;
+        dash_set_launch(&l);
+        dash_init();
+    }
     int rc = download_all(id, dest, names, sizes, restricted, filtered,
                           listing.count, threads, &stats);
     if (want_dashboard) dash_shutdown();

@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <time.h>
 
+#include "thrd.h"
 #include "util.h"
 
 /*
@@ -22,6 +23,12 @@ typedef struct {
     int index;
     int total_files;
     int slot;
+    /* Optional live-aggregate hook for a dashboard. All may be NULL.
+       agg_stats is a pointer to downloader's DownloadStats; typed void to
+       avoid a header dependency; downloader casts it. */
+    void *agg_stats;
+    long *agg_bytes_done;
+    thrd_mutex *agg_mutex;
 } DownloadContext;
 
 /*
