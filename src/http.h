@@ -21,6 +21,7 @@ typedef struct {
     time_t start_time;
     int index;
     int total_files;
+    int slot;
 } DownloadContext;
 
 /*

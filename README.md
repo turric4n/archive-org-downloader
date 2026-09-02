@@ -127,6 +127,7 @@ creates and uses `./total-dos-collection-b`.
 | `--password <pass>` | Supply the login password non-interactively |
 | `--type <glob>`   | Only download files matching a type/glob pattern |
 | `--threads <n>`   | Download at most `n` files concurrently (default 1) |
+| `--dashboard`     | Show a live TUI dashboard (top active downloads + latest operations) |
 
 ### Terminal colours
 

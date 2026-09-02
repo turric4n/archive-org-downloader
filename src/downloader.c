@@ -4,11 +4,28 @@
 #include "log.h"
 #include "util.h"
 #include "color.h"
+#include "dashboard.h"
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include <time.h>
+
+static void status_line(const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    if (dash_active()) {
+        char buf[512];
+        vsnprintf(buf, sizeof(buf), fmt, ap);
+        va_end(ap);
+        dash_log(buf);
+    } else {
+        vprintf(fmt, ap);
+        va_end(ap);
+        fflush(stdout);
+    }
+}
 
 static void progress_display(const void *data, size_t len, void *user) {
     DownloadContext *dc = (DownloadContext *)user;
@@ -24,6 +41,14 @@ static void progress_display(const void *data, size_t len, void *user) {
     double pct = total > 0 ? cur / total * 100.0 : 0;
     double speed = dc->downloaded / elapsed;
     double eta = total > 0 ? (total - cur) / speed : 0;
+
+    if (dash_active()) {
+        dash_set_worker(dc->slot, dc->downloaded, dc->total_size,
+                        dc->resume_from, speed, eta);
+        dash_tick();
+        return;
+    }
+
     int h = eta > 0 ? (int)(eta / 3600) : 0;
     int m = eta > 0 ? (int)((eta - h * 3600) / 60) : 0;
     int s = eta > 0 ? (int)(eta - h * 3600 - m * 60) : 0;
@@ -89,6 +114,11 @@ static void count_one(DownloadShared *sh, int kind) {
     thrd_mutex_unlock(&sh->mutex);
 }
 
+typedef struct {
+    DownloadShared *sh;
+    int slot;
+} DownloadWorker;
+
 int download_all(const char *identifier, const char *dest,
                  const char *const *names, const double *sizes,
                  const int *restricted, const int *filtered, size_t count,
@@ -119,18 +149,24 @@ int download_all(const char *identifier, const char *dest,
     thrd_mutex_init(&sh.mutex);
 
     thrd_t *workers = (thrd_t *)calloc((size_t)n, sizeof(thrd_t));
-    if (!workers) {
+    DownloadWorker *wargs = (DownloadWorker *)calloc((size_t)n, sizeof(DownloadWorker));
+    if (!workers || !wargs) {
+        free(workers);
+        free(wargs);
         thrd_mutex_destroy(&sh.mutex);
         return 1;
     }
 
     int spawned = 0;
     for (int i = 0; i < n; i++) {
-        if (thrd_create(&workers[i], download_one, &sh) == 0) spawned++;
+        wargs[i].sh = &sh;
+        wargs[i].slot = i;
+        if (thrd_create(&workers[i], download_one, &wargs[i]) == 0) spawned++;
     }
 
     for (int i = 0; i < spawned; i++) thrd_join(workers[i]);
     free(workers);
+    free(wargs);
     thrd_mutex_destroy(&sh.mutex);
 
     return stats->failed > 0 ? 1 : 0;
@@ -145,7 +181,9 @@ static size_t next_index(DownloadShared *sh) {
 }
 
 static void download_one(void *arg) {
-    DownloadShared *sh = (DownloadShared *)arg;
+    DownloadWorker *wk = (DownloadWorker *)arg;
+    DownloadShared *sh = wk->sh;
+    int slot = wk->slot;
 
     for (;;) {
         size_t i = next_index(sh);
@@ -160,16 +198,16 @@ static void download_one(void *arg) {
 
         if (sh->filtered && sh->filtered[i]) {
             LOG_D("File '%s': filtered out by --type pattern - skipping.", name);
-            printf("  %s[SKIP]%s %s (filtered)\n",
-                   color_start("yellow"), color_reset(), name);
+            status_line("  %s[SKIP]%s %s (filtered)\n",
+                        color_start("yellow"), color_reset(), name);
             count_one(sh, 5);
             continue;
         }
 
         if (sh->restricted && sh->restricted[i]) {
             LOG_D("File '%s': marked as restricted - skipping.", name);
-            printf("  %s[SKIP]%s %s (restricted)\n",
-                   color_start("yellow"), color_reset(), name);
+            status_line("  %s[SKIP]%s %s (restricted)\n",
+                        color_start("yellow"), color_reset(), name);
             count_one(sh, 4);
             continue;
         }
@@ -189,16 +227,16 @@ static void download_one(void *arg) {
 
         if (exist >= fsz && fsz > 0) {
             LOG_I("File '%s' already downloaded (%ld bytes). Skipping.", name, exist);
-            printf("  %s[DONE]%s %s (already downloaded)\n",
-                   color_start("green"), color_reset(), name);
+            status_line("  %s[DONE]%s %s (already downloaded)\n",
+                        color_start("green"), color_reset(), name);
             count_one(sh, 2);
             continue;
         }
 
         char szbuf[64]; fmt_size(szbuf, sizeof(szbuf), fsz);
         LOG_I("Starting download of '%s' (%s, %ld bytes).", name, szbuf, fsz);
-        printf("  %s[GET]%s  %s (%s)\n",
-               color_start("cyan"), color_reset(), name, szbuf);
+        status_line("  %s[GET]%s  %s (%s)\n",
+                    color_start("cyan"), color_reset(), name, szbuf);
 
         /* Create parent dirs if the name has sub-paths */
         char *last = strrchr(path, '/');
@@ -216,8 +254,8 @@ static void download_one(void *arg) {
         if (exist > 0 && exist < fsz) {
             LOG_I("Partial file: %ld / %ld bytes (%.1f%%). Resuming.",
                   exist, fsz, (double)exist / fsz * 100);
-            printf("         Resuming from %ld bytes (%.1f%%)\n",
-                   exist, (double)exist / fsz * 100);
+            status_line("         Resuming from %ld bytes (%.1f%%)\n",
+                        exist, (double)exist / fsz * 100);
             fp = fopen(path, "ab");
             resume = exist;
             if (fp) LOG_D("Opened '%s' in append mode.", path);
@@ -228,8 +266,8 @@ static void download_one(void *arg) {
         }
         if (!fp) {
             LOG_E("Cannot open file for writing: %s", path);
-            fprintf(stderr, "  %s[ERR]%s Cannot write: %s\n",
-                    color_start("red"), color_reset(), path);
+            status_line("  %s[ERR]%s Cannot write: %s\n",
+                        color_start("red"), color_reset(), path);
             count_one(sh, 3);
             continue;
         }
@@ -242,6 +280,9 @@ static void download_one(void *arg) {
         dc.start_time = time(NULL);
         dc.index = (int)(i + 1);
         dc.total_files = (int)sh->count;
+        dc.slot = slot;
+
+        dash_begin_worker(slot, name, (int)(i + 1), (int)sh->count);
 
         char range_h[64] = {0};
         if (resume > 0) {
@@ -255,6 +296,7 @@ static void download_one(void *arg) {
         int sc = http_get(url, NULL, range_h[0] ? range_h : NULL,
                           progress_display, &dc);
         fclose(fp);
+        dash_end_worker(slot);
         LOG_D("File '%s': transfer complete, status %d.", name, sc);
 
         if (sc == 200 || sc == 206) {
@@ -262,24 +304,24 @@ static void download_one(void *arg) {
             LOG_D("File '%s': final size on disk = %ld.", name, final);
             if (final >= fsz || fsz <= 0) {
                 LOG_I("Successfully downloaded '%s' (%ld bytes).", name, final);
-                printf("\n  %s[OK]%s   %s\n",
-                       color_start("green"), color_reset(), name);
+                status_line("  %s[OK]%s   %s\n",
+                            color_start("green"), color_reset(), name);
                 count_one(sh, 1);
             } else {
                 LOG_W("File '%s' incomplete: %ld/%ld bytes.", name, final, fsz);
-                printf("\n  %s[WARN]%s %s (incomplete: %ld/%ld)\n",
-                       color_start("yellow"), color_reset(), name, final, fsz);
+                status_line("  %s[WARN]%s %s (incomplete: %ld/%ld)\n",
+                            color_start("yellow"), color_reset(), name, final, fsz);
                 count_one(sh, 3);
             }
         } else if (sc == 416) {
             LOG_I("Server: Range not satisfiable - file '%s' complete.", name);
-            printf("\n  %s[DONE]%s %s (server says Range not satisfiable)\n",
-                   color_start("green"), color_reset(), name);
+            status_line("  %s[DONE]%s %s (server says Range not satisfiable)\n",
+                        color_start("green"), color_reset(), name);
             count_one(sh, 2);
         } else {
             LOG_E("HTTP error %d for file '%s'.", sc, name);
-            fprintf(stderr, "\n  %s[ERR]%s  %s (HTTP %d)\n",
-                    color_start("red"), color_reset(), name, sc);
+            status_line("  %s[ERR]%s  %s (HTTP %d)\n",
+                        color_start("red"), color_reset(), name, sc);
             count_one(sh, 3);
         }
     }

@@ -10,6 +10,7 @@
 #include "auth.h"
 #include "archive.h"
 #include "downloader.h"
+#include "dashboard.h"
 
 /* Version of this build. Override at compile time with -DVERSION="..." (e.g. a
  * release tag or commit). Defaults to "dev" for local builds. */
@@ -36,6 +37,8 @@ static void usage(const char *prog) {
     printf("  --type <glob>          Only download files matching a type/glob\n");
     printf("                         (e.g. \"*.zip\", \"*.{jpg,png}\", \"*/doc/*\")\n");
     printf("  --threads <n>          Download at most n files concurrently (default 1)\n");
+    printf("  --dashboard            Show a live top/bottom console (file, ETA, speed\n");
+    printf("                         + result of the latest operations)\n");
     printf("  --color / --no-color   Force enable / disable ANSI colours\n");
     printf("\nEnvironment:\n");
     printf("  IA_EMAIL / IA_PASSWORD Can provide credentials for --login without\n");
@@ -161,6 +164,7 @@ int main(int argc, char *argv[]) {
     const char *arg_email = NULL, *arg_pass = NULL;
     const char *type_pattern = NULL; /* optional --type glob; NULL = all files */
     int threads = 1;
+    int want_dashboard = 0;
     int have_src = 0, have_dest = 0;
     int want_login = 0, want_logout = 0;
     int need_val = 0; /* next token is a flag's value */
@@ -201,6 +205,8 @@ int main(int argc, char *argv[]) {
             need_val = 1; val_flag = "type";
         } else if (strcmp(tok, "--threads") == 0) {
             need_val = 1; val_flag = "threads";
+        } else if (strcmp(tok, "--dashboard") == 0) {
+            want_dashboard = 1;
         } else if (strcmp(tok, "--color") == 0) {
             color_enable();
         } else if (strcmp(tok, "--no-color") == 0) {
@@ -277,6 +283,7 @@ int main(int argc, char *argv[]) {
     LOG_I("  destination_folder   = %s", dest);
     LOG_I("  credentials file     = %s", cfg_path_arg);
     LOG_I("  download threads     = %d", threads);
+    LOG_I("  dashboard            = %s", want_dashboard ? "on" : "off");
 
     /* Handle --login alongside a download: authenticate and store credentials. */
     if (want_login) {
@@ -336,8 +343,10 @@ int main(int argc, char *argv[]) {
     }
 
     DownloadStats stats;
+    if (want_dashboard) dash_init();
     int rc = download_all(id, dest, names, sizes, restricted, filtered,
                           listing.count, threads, &stats);
+    if (want_dashboard) dash_shutdown();
 
     LOG_I("==================================================");
     LOG_I("  Download summary");

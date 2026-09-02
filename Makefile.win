@@ -33,6 +33,7 @@ SOURCES = $(SRC_DIR)/main.c \
           $(SRC_DIR)/archive.c \
           $(SRC_DIR)/downloader.c \
           $(SRC_DIR)/thrd.c \
+          $(SRC_DIR)/dashboard.c \
           $(SRC_DIR)/parson.c
 
 OBJECTS = $(patsubst $(SRC_DIR)/%.c,$(OBJ_DIR)/%.o,$(SOURCES))

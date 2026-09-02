@@ -21,6 +21,7 @@ set(SOURCES
     src/archive.c
     src/downloader.c
     src/thrd.c
+    src/dashboard.c
     src/parson.c
 )
 
