@@ -63,10 +63,12 @@ Two automated test suites run in CI on both Windows and Linux:
   `URL using bad/illegal format` (rc=3) failure caused by raw spaces, `(`/`)`
   and `[`/`]` in file names.
 - **Integration test** (`tests/integration_test.sh`): runs the real binary
-  against a live archive.org collection and asserts a file whose name contains
-  special characters (spaces, parentheses, brackets) downloads with the correct
-  size. Bulk `archive.org` HTTP request limits are avoided and transient network
-  failures are retried.
+  against a live archive.org collection and asserts a file downloads with the
+  correct size. It retries transient network failures with backoff. Because
+  archive.org intermittently blocks/rate-limits GitHub-CI datacenter IPs, the
+  script treats "archive.org unreachable from the runner" as environmental and
+  skips rather than failing, while **failing hard** when archive.org is
+  reachable but the download misbehaves (a genuine tool regression).
 
 Run them locally:
 
